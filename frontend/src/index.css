@@ -1,0 +1,17 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Quill editor overrides to match Tailwind */
+.ql-toolbar.ql-snow {
+  @apply border-slate-200 bg-slate-50 rounded-t-lg;
+}
+.ql-container.ql-snow {
+  @apply border-slate-200 rounded-b-lg text-slate-800 min-h-[200px];
+}
+.ql-editor {
+  @apply min-h-[200px];
+}
+.ql-editor.ql-blank::before {
+  @apply text-slate-400 italic;
+}

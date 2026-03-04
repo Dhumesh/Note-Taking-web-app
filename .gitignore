@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Environment (never commit real credentials)
+.env
+.env.local
+.env.*.local
+
+# Build
+dist/
+build/
+
+# Logs and debug
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
