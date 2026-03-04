@@ -69,9 +69,10 @@ export default function Dashboard() {
     <div className="h-screen bg-[#f6f6f8] text-slate-900 flex overflow-hidden">
       <aside className="w-64 border-r border-slate-200 bg-white flex flex-col shrink-0">
         <Link to="/" className="p-6 flex items-center gap-3 hover:opacity-90">
-          <div className="bg-[#135bec] rounded-lg p-1.5 flex items-center justify-center">
-            <span className="material-symbols-outlined text-white text-2xl">grid_view</span>
-          </div>
+          <span className="relative size-9 rounded-xl bg-[#135bec] text-white overflow-hidden">
+            <span className="material-symbols-outlined absolute left-1.5 top-1.5 text-[16px]">description</span>
+            <span className="material-symbols-outlined absolute right-1 bottom-1 text-[14px]">edit</span>
+          </span>
           <h1 className="text-xl font-bold leading-none">NoteFlow</h1>
         </Link>
         <nav className="flex-1 px-4 space-y-1">

@@ -33,9 +33,10 @@ export default function Login() {
     <div className="min-h-screen bg-[#f6f6f8] text-slate-900">
       <header className="flex items-center justify-between border-b border-slate-200 px-6 py-4 bg-white">
         <Link to="/" className="flex items-center gap-2 text-[#135bec] hover:opacity-90">
-          <div className="size-8 flex items-center justify-center bg-[#135bec] text-white rounded-lg">
-            <span className="material-symbols-outlined">sync_alt</span>
-          </div>
+          <span className="relative size-9 rounded-xl bg-[#135bec] text-white overflow-hidden">
+            <span className="material-symbols-outlined absolute left-1.5 top-1.5 text-[16px]">description</span>
+            <span className="material-symbols-outlined absolute right-1 bottom-1 text-[14px]">edit</span>
+          </span>
           <h2 className="text-xl font-bold tracking-tight">NoteSync</h2>
         </Link>
         <span className="text-sm text-slate-500 hidden md:block">Secure Cloud Synchronization</span>

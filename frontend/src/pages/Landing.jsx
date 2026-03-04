@@ -29,7 +29,13 @@ export default function Landing() {
     <div className="min-h-screen bg-slate-50 text-slate-900">
       <header className="border-b border-slate-200 bg-white/90 backdrop-blur sticky top-0 z-20">
         <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
-          <Link to="/" className="font-bold text-lg">NoteSync</Link>
+          <Link to="/" className="flex items-center gap-2 font-bold text-lg">
+            <span className="relative size-9 rounded-xl bg-blue-600 text-white overflow-hidden">
+              <span className="material-symbols-outlined absolute left-1.5 top-1.5 text-[16px]">description</span>
+              <span className="material-symbols-outlined absolute right-1 bottom-1 text-[14px]">edit</span>
+            </span>
+            <span>NoteSync</span>
+          </Link>
           <nav className="hidden md:flex items-center gap-6 text-sm text-slate-600">
             <a href="#features" className="hover:text-slate-900">Features</a>
             <a href="#pricing" className="hover:text-slate-900">Pricing</a>
@@ -58,12 +64,9 @@ export default function Landing() {
             Experience real-time syncing and rich note editing across your devices.
             Keep your ideas organized, searchable, and easy to share.
           </p>
-          <div className="mt-7 flex flex-wrap items-center gap-3">
+          <div className="mt-7 flex items-center">
             <Link to={user ? '/app' : '/register'} className="px-5 py-3 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700">
               Get Started For Free
-            </Link>
-            <Link to={user ? '/app' : '/login'} className="px-5 py-3 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-100">
-              Watch Demo
             </Link>
           </div>
         </div>
