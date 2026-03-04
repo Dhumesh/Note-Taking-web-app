@@ -78,6 +78,12 @@ For local development with the default Vite proxy, you can leave `VITE_API_URL` 
 4. **Demo video**  
    Record a short demo covering: sign up, login, creating/editing a note, full-text search, and adding/removing a collaborator. Add the video file (e.g. `demo.mp4`) to the repo or link it in the README.
 
+## MongoDB Atlas
+
+- **Cluster** = your server in Atlas (e.g. "Cluster0"). You use its host in the connection string (e.g. `cluster0.ybqxp9g.mongodb.net`). You do **not** create a cluster named "note-app".
+- **Database "note-app"** = created automatically when the app first connects and writes data. It will appear under your cluster in Atlas after a successful connection and first use (e.g. after registering).
+- If the app cannot connect: in Atlas go to **Network Access** → **Add IP Address** → allow your current IP or use `0.0.0.0/0` for development (allow from anywhere).
+
 ## Assumptions and notes
 
 - **Collaborators** are added by **email**; the user must already have an account.
