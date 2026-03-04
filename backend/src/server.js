@@ -14,6 +14,12 @@ app.use('/api/notes', notesRoutes);
 
 app.get('/api/health', (_, res) => res.json({ ok: true }));
 
+// Global error handler so uncaught errors return 500 instead of crashing
+app.use((err, req, res, next) => {
+  console.error(err);
+  res.status(500).json({ message: err.message || 'Internal server error' });
+});
+
 connectDB().then(() => {
   const PORT = process.env.PORT || 5000;
   app.listen(PORT, () => console.log(`Server on http://localhost:${PORT}`));

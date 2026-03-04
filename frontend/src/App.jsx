@@ -4,6 +4,8 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import NotePage from './pages/NotePage';
+import Landing from './pages/Landing';
+import Trash from './pages/Trash';
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
@@ -21,10 +23,11 @@ function ProtectedRoute({ children }) {
 export default function App() {
   return (
     <Routes>
+      <Route path="/" element={<Landing />} />
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
       <Route
-        path="/"
+        path="/app"
         element={
           <ProtectedRoute>
             <Dashboard />
@@ -36,6 +39,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <NotePage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/trash"
+        element={
+          <ProtectedRoute>
+            <Trash />
           </ProtectedRoute>
         }
       />

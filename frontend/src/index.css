@@ -2,6 +2,14 @@
 @tailwind components;
 @tailwind utilities;
 
+body {
+  font-family: 'Inter', sans-serif;
+}
+
+.material-symbols-outlined {
+  font-variation-settings: 'FILL' 0, 'wght' 500, 'GRAD' 0, 'opsz' 24;
+}
+
 /* Quill editor overrides to match Tailwind */
 .ql-toolbar.ql-snow {
   @apply border-slate-200 bg-slate-50 rounded-t-lg;

@@ -2,7 +2,15 @@ import mongoose from 'mongoose';
 
 export const connectDB = async () => {
   try {
-    await mongoose.connect(process.env.MONGODB_URI);
+    const uri = process.env.MONGODB_URI;
+    if (!uri) {
+      throw new Error('MONGODB_URI is not set in backend/.env');
+    }
+    if (uri.includes('<db_password>')) {
+      throw new Error('MONGODB_URI still contains <db_password>. Replace it with your real Atlas password.');
+    }
+
+    await mongoose.connect(uri);
     console.log('MongoDB connected');
   } catch (err) {
     console.error('MongoDB connection error:', err.message);

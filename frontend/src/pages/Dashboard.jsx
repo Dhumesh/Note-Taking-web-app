@@ -11,6 +11,7 @@ export default function Dashboard() {
   const [searchResults, setSearchResults] = useState(null);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [deletingId, setDeletingId] = useState('');
 
   useEffect(() => {
     api
@@ -30,7 +31,7 @@ export default function Dashboard() {
         .get(`/api/notes/search?q=${encodeURIComponent(search)}`)
         .then(setSearchResults)
         .catch(() => setSearchResults([]));
-    }, 300);
+    }, 250);
     return () => clearTimeout(t);
   }, [search]);
 
@@ -48,78 +49,125 @@ export default function Dashboard() {
     }
   }
 
+  async function moveToTrash(noteId) {
+    if (!window.confirm('Delete this note? It will be moved to Trash.')) return;
+    setDeletingId(noteId);
+    try {
+      await api.delete(`/api/notes/${noteId}`);
+      setNotes((prev) => prev.filter((n) => n._id !== noteId));
+      if (searchResults !== null) {
+        setSearchResults((prev) => (prev || []).filter((n) => n._id !== noteId));
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setDeletingId('');
+    }
+  }
+
   return (
-    <div className="min-h-screen bg-slate-50">
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-10">
-        <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
-          <Link to="/" className="text-xl font-bold text-slate-800 font-sans">
-            Note
+    <div className="h-screen bg-[#f6f6f8] text-slate-900 flex overflow-hidden">
+      <aside className="w-64 border-r border-slate-200 bg-white flex flex-col shrink-0">
+        <Link to="/" className="p-6 flex items-center gap-3 hover:opacity-90">
+          <div className="bg-[#135bec] rounded-lg p-1.5 flex items-center justify-center">
+            <span className="material-symbols-outlined text-white text-2xl">grid_view</span>
+          </div>
+          <h1 className="text-xl font-bold leading-none">NoteFlow</h1>
+        </Link>
+        <nav className="flex-1 px-4 space-y-1">
+          <Link to="/app" className="flex items-center gap-3 px-3 py-2.5 bg-[#135bec]/10 text-[#135bec] rounded-lg font-medium">
+            <span className="material-symbols-outlined">description</span>
+            <span>All Notes</span>
           </Link>
-          <div className="flex-1 max-w-md">
+          <Link to="/trash" className="flex items-center gap-3 px-3 py-2.5 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">
+            <span className="material-symbols-outlined">delete</span>
+            <span>Trash</span>
+          </Link>
+        </nav>
+        <div className="p-4 border-t border-slate-200">
+          <div className="rounded-xl bg-slate-50 p-3">
+            <p className="text-sm font-semibold truncate">{user?.name}</p>
+            <p className="text-xs text-slate-500 truncate">{user?.email}</p>
+          </div>
+        </div>
+      </aside>
+
+      <main className="flex-1 flex flex-col overflow-hidden">
+        <header className="h-16 border-b border-slate-200 bg-white px-8 flex items-center justify-between">
+          <div className="flex-1 max-w-xl relative">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 material-symbols-outlined">search</span>
             <input
               type="search"
-              placeholder="Search notes…"
+              placeholder="Search your notes..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+              className="w-full bg-slate-100 rounded-xl py-2 pl-10 pr-4 text-sm border-none focus:ring-2 focus:ring-[#135bec]/20 outline-none"
             />
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-slate-600 hidden sm:inline">{user?.name}</span>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={logout}
+              className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-100"
+            >
+              Logout
+            </button>
             <button
               onClick={createNote}
               disabled={creating}
-              className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+              className="bg-[#135bec] text-white px-5 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 shadow-lg shadow-[#135bec]/20 hover:bg-[#114fce] transition-all disabled:opacity-60"
             >
-              New note
+              <span className="material-symbols-outlined text-lg">add</span>
+              New Note
             </button>
-            <button
-              onClick={logout}
-              className="px-3 py-2 text-slate-600 hover:text-slate-800 text-sm"
-            >
-              Log out
-            </button>
+          </div>
+        </header>
+
+        <div className="flex-1 overflow-y-auto p-8">
+          <div className="max-w-6xl mx-auto">
+            <div className="mb-8">
+              <h2 className="text-3xl font-bold">All Notes</h2>
+              <p className="text-slate-500 mt-1">Manage and organize your thoughts effectively.</p>
+            </div>
+
+            {loading ? (
+              <div className="flex justify-center py-12">
+                <div className="animate-spin w-8 h-8 border-2 border-[#135bec] border-t-transparent rounded-full" />
+              </div>
+            ) : displayNotes.length === 0 ? (
+              <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-slate-500">
+                {search.trim() ? 'No notes match your search.' : 'No notes yet. Create one to get started.'}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                {displayNotes.map((note) => (
+                  <article key={note._id} className="bg-white p-5 rounded-xl border border-slate-200 hover:shadow-lg transition-all flex flex-col min-h-[220px]">
+                    <div className="flex justify-between items-start mb-4">
+                      <span className="bg-blue-50 text-blue-600 text-xs font-bold px-2 py-1 rounded uppercase tracking-wider">Note</span>
+                      <button
+                        onClick={() => moveToTrash(note._id)}
+                        disabled={deletingId === note._id}
+                        className="material-symbols-outlined text-slate-400 hover:text-red-600 disabled:opacity-50"
+                        title="Move to trash"
+                      >
+                        delete
+                      </button>
+                    </div>
+                    <Link to={`/note/${note._id}`} className="block flex-1">
+                      <h3 className="font-bold text-lg mb-2 line-clamp-1">{note.title || 'Untitled'}</h3>
+                      <p className="text-slate-500 text-sm line-clamp-4 leading-relaxed">
+                        {note.content?.replace(/<[^>]+>/g, ' ').trim() || 'No content yet.'}
+                      </p>
+                    </Link>
+                    <div className="mt-auto pt-4 text-xs text-slate-400 flex items-center justify-between">
+                      <span>{new Date(note.updatedAt).toLocaleString()}</span>
+                      {note.collaborators?.length > 0 ? <span>{note.collaborators.length} collaborators</span> : null}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
           </div>
         </div>
-      </header>
-
-      <main className="max-w-4xl mx-auto px-4 py-6">
-        {loading ? (
-          <div className="flex justify-center py-12">
-            <div className="animate-spin w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full" />
-          </div>
-        ) : displayNotes.length === 0 ? (
-          <div className="text-center py-16 text-slate-500">
-            {search.trim() ? 'No notes match your search.' : 'No notes yet. Create one to get started.'}
-          </div>
-        ) : (
-          <ul className="space-y-2">
-            {displayNotes.map((note) => (
-              <li key={note._id}>
-                <Link
-                  to={`/note/${note._id}`}
-                  className="block bg-white rounded-lg border border-slate-200 p-4 hover:border-indigo-300 hover:shadow-sm transition"
-                >
-                  <h2 className="font-medium text-slate-800 truncate">
-                    {note.title || 'Untitled'}
-                  </h2>
-                  <p
-                    className="text-sm text-slate-500 mt-1 line-clamp-2"
-                    dangerouslySetInnerHTML={{
-                      __html: note.content?.replace(/<[^>]+>/g, ' ').slice(0, 120) || '',
-                    }}
-                  />
-                  <div className="flex items-center gap-2 mt-2 text-xs text-slate-400">
-                    <span>{note.owner?.name || 'You'}</span>
-                    {note.collaborators?.length > 0 && (
-                      <span>· {note.collaborators.length} collaborator(s)</span>
-                    )}
-                  </div>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        )}
       </main>
     </div>
   );

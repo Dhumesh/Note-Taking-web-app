@@ -17,6 +17,10 @@ userSchema.pre('save', async function (next) {
 });
 
 userSchema.methods.comparePassword = function (candidate) {
+  // Handle legacy/corrupt documents without a hashed password.
+  if (typeof candidate !== 'string' || typeof this.password !== 'string' || !this.password) {
+    return false;
+  }
   return bcrypt.compare(candidate, this.password);
 };
 

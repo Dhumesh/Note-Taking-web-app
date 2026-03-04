@@ -11,6 +11,7 @@ router.get('/', async (req, res) => {
   try {
     const notes = await Note.find({
       $or: [{ owner: req.user._id }, { collaborators: req.user._id }],
+      isTrashed: { $ne: true },
     })
       .sort({ updatedAt: -1 })
       .populate('owner', 'name email')
@@ -22,19 +23,48 @@ router.get('/', async (req, res) => {
   }
 });
 
-// Full-text search
+// Full-text search (falls back to regex if text index is not ready)
 router.get('/search', async (req, res) => {
   try {
     const q = (req.query.q || '').trim();
     if (!q) return res.json([]);
-    const notes = await Note.find(
-      {
-        $text: { $search: q },
-        $or: [{ owner: req.user._id }, { collaborators: req.user._id }],
-      },
-      { score: { $meta: 'textScore' } }
-    )
-      .sort({ score: { $meta: 'textScore' } })
+    const baseFilter = {
+      $or: [{ owner: req.user._id }, { collaborators: req.user._id }],
+      isTrashed: { $ne: true },
+    };
+    let notes;
+    try {
+      notes = await Note.find(
+        { ...baseFilter, $text: { $search: q } },
+        { score: { $meta: 'textScore' } }
+      )
+        .sort({ score: { $meta: 'textScore' } })
+        .populate('owner', 'name email')
+        .populate('collaborators', 'name email')
+        .lean();
+    } catch (textErr) {
+      // Text index may not exist yet; fall back to regex search
+      const regex = new RegExp(escapeRegex(q), 'i');
+      notes = await Note.find({
+        ...baseFilter,
+        $or: [{ title: regex }, { content: regex }],
+      })
+        .sort({ updatedAt: -1 })
+        .populate('owner', 'name email')
+        .populate('collaborators', 'name email')
+        .lean();
+    }
+    res.json(notes);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Get trashed notes (owner only)
+router.get('/trash', async (req, res) => {
+  try {
+    const notes = await Note.find({ owner: req.user._id, isTrashed: true })
+      .sort({ trashedAt: -1, updatedAt: -1 })
       .populate('owner', 'name email')
       .populate('collaborators', 'name email')
       .lean();
@@ -44,12 +74,17 @@ router.get('/search', async (req, res) => {
   }
 });
 
+function escapeRegex(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 // Get single note
 router.get('/:id', async (req, res) => {
   try {
     const note = await Note.findOne({
       _id: req.params.id,
       $or: [{ owner: req.user._id }, { collaborators: req.user._id }],
+      isTrashed: { $ne: true },
     })
       .populate('owner', 'name email')
       .populate('collaborators', 'name email');
@@ -81,6 +116,7 @@ router.put('/:id', async (req, res) => {
     const note = await Note.findOne({
       _id: req.params.id,
       $or: [{ owner: req.user._id }, { collaborators: req.user._id }],
+      isTrashed: { $ne: true },
     });
     if (!note) return res.status(404).json({ message: 'Note not found' });
     if (req.body.title !== undefined) note.title = req.body.title;
@@ -93,13 +129,42 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-// Delete note (owner only)
+// Move note to trash (owner only)
 router.delete('/:id', async (req, res) => {
   try {
-    const note = await Note.findOne({ _id: req.params.id, owner: req.user._id });
+    const note = await Note.findOne({ _id: req.params.id, owner: req.user._id, isTrashed: { $ne: true } });
     if (!note) return res.status(404).json({ message: 'Note not found' });
+    note.isTrashed = true;
+    note.trashedAt = new Date();
+    await note.save();
+    res.json({ message: 'Note moved to trash' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Restore note from trash (owner only)
+router.post('/:id/restore', async (req, res) => {
+  try {
+    const note = await Note.findOne({ _id: req.params.id, owner: req.user._id, isTrashed: true });
+    if (!note) return res.status(404).json({ message: 'Note not found in trash' });
+    note.isTrashed = false;
+    note.trashedAt = null;
+    await note.save();
+    await note.populate(['owner', 'collaborators']);
+    res.json(note);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Permanently delete note from trash (owner only)
+router.delete('/:id/permanent', async (req, res) => {
+  try {
+    const note = await Note.findOne({ _id: req.params.id, owner: req.user._id, isTrashed: true });
+    if (!note) return res.status(404).json({ message: 'Note not found in trash' });
     await note.deleteOne();
-    res.json({ message: 'Note deleted' });
+    res.json({ message: 'Note permanently deleted' });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
