@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, Link, useLocation } from 'react-router-dom';
 import ReactQuill from 'react-quill';
 import 'react-quill/dist/quill.snow.css';
 import { useAuth } from '../context/AuthContext';
@@ -8,6 +8,7 @@ import { api } from '../api/client';
 export default function NotePage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, logout } = useAuth();
   const [note, setNote] = useState(null);
   const [title, setTitle] = useState('');
@@ -20,6 +21,13 @@ export default function NotePage() {
   const hasUserEdited = useRef(false);
 
   const isOwner = note?.owner?._id === user?._id;
+  const backPath = location.state?.from || '/app';
+  const backLabel = backPath === '/favorites' ? 'Back to Favorites' : 'Back to Notes';
+  const goBack = () => {
+    if (location.state?.from) return navigate(location.state.from);
+    if (window.history.length > 1) return navigate(-1);
+    return navigate('/app');
+  };
 
   const fetchNote = useCallback(async () => {
     try {
@@ -86,6 +94,15 @@ export default function NotePage() {
     }
   }
 
+  async function toggleFavorite() {
+    try {
+      const updated = await api.put(`/api/notes/${id}/favorite`, { isFavorite: !note.isFavorite });
+      setNote(updated);
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#f6f6f8]">
@@ -116,7 +133,13 @@ export default function NotePage() {
     <div className="min-h-screen bg-[#f6f6f8] text-slate-900 flex flex-col">
       <header className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-3 sticky top-0 z-30">
         <div className="flex items-center gap-4 min-w-0">
-          <Link to="/app" className="text-[#135bec] text-sm font-semibold hover:underline">Back</Link>
+          <button
+            type="button"
+            onClick={goBack}
+            className="text-[#135bec] text-sm font-semibold hover:underline"
+          >
+            {backLabel}
+          </button>
           <div className="min-w-0">
             <p className="text-xs text-slate-500">Collaborative note</p>
             <p className="text-sm font-semibold truncate">{note.owner?.name || 'Owner'}</p>
@@ -124,6 +147,12 @@ export default function NotePage() {
         </div>
         <div className="flex items-center gap-3">
           <span className="text-sm text-slate-500">{saving ? 'Saving...' : 'Saved'}</span>
+          <button
+            onClick={toggleFavorite}
+            className={`px-3 py-2 rounded-lg text-sm font-medium border ${note.isFavorite ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-white text-slate-700 border-slate-300'} hover:bg-slate-100`}
+          >
+            {note.isFavorite ? 'Unfavorite' : 'Favorite'}
+          </button>
           <button
             onClick={logout}
             className="px-3 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-100"

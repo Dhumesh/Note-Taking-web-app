@@ -6,6 +6,7 @@ import Dashboard from './pages/Dashboard';
 import NotePage from './pages/NotePage';
 import Landing from './pages/Landing';
 import Trash from './pages/Trash';
+import Favorites from './pages/Favorites';
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
@@ -47,6 +48,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <Trash />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/favorites"
+        element={
+          <ProtectedRoute>
+            <Favorites />
           </ProtectedRoute>
         }
       />

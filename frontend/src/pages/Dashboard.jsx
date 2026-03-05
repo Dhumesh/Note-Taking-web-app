@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api/client';
 
 export default function Dashboard() {
   const { user, logout } = useAuth();
+  const location = useLocation();
   const navigate = useNavigate();
   const [notes, setNotes] = useState([]);
   const [search, setSearch] = useState('');
@@ -65,6 +66,18 @@ export default function Dashboard() {
     }
   }
 
+  async function toggleFavorite(noteId, currentValue) {
+    try {
+      const updated = await api.put(`/api/notes/${noteId}/favorite`, { isFavorite: !currentValue });
+      setNotes((prev) => prev.map((n) => (n._id === noteId ? updated : n)));
+      if (searchResults !== null) {
+        setSearchResults((prev) => (prev || []).map((n) => (n._id === noteId ? updated : n)));
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
   return (
     <div className="h-screen bg-[#f6f6f8] text-slate-900 flex overflow-hidden">
       <aside className="w-64 border-r border-slate-200 bg-white flex flex-col shrink-0">
@@ -79,6 +92,10 @@ export default function Dashboard() {
           <Link to="/app" className="flex items-center gap-3 px-3 py-2.5 bg-[#135bec]/10 text-[#135bec] rounded-lg font-medium">
             <span className="material-symbols-outlined">description</span>
             <span>All Notes</span>
+          </Link>
+          <Link to="/favorites" className="flex items-center gap-3 px-3 py-2.5 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">
+            <span className="material-symbols-outlined">star</span>
+            <span>Favorites</span>
           </Link>
           <Link to="/trash" className="flex items-center gap-3 px-3 py-2.5 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">
             <span className="material-symbols-outlined">delete</span>
@@ -144,16 +161,25 @@ export default function Dashboard() {
                   <article key={note._id} className="bg-white p-5 rounded-xl border border-slate-200 hover:shadow-lg transition-all flex flex-col min-h-[220px]">
                     <div className="flex justify-between items-start mb-4">
                       <span className="bg-blue-50 text-blue-600 text-xs font-bold px-2 py-1 rounded uppercase tracking-wider">Note</span>
-                      <button
-                        onClick={() => moveToTrash(note._id)}
-                        disabled={deletingId === note._id}
-                        className="material-symbols-outlined text-slate-400 hover:text-red-600 disabled:opacity-50"
-                        title="Move to trash"
-                      >
-                        delete
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => toggleFavorite(note._id, !!note.isFavorite)}
+                          className={`material-symbols-outlined ${note.isFavorite ? 'text-amber-500' : 'text-slate-400'} hover:text-amber-500`}
+                          title={note.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                        >
+                          {note.isFavorite ? 'star' : 'star_outline'}
+                        </button>
+                        <button
+                          onClick={() => moveToTrash(note._id)}
+                          disabled={deletingId === note._id}
+                          className="material-symbols-outlined text-slate-400 hover:text-red-600 disabled:opacity-50"
+                          title="Move to trash"
+                        >
+                          delete
+                        </button>
+                      </div>
                     </div>
-                    <Link to={`/note/${note._id}`} className="block flex-1">
+                    <Link to={`/note/${note._id}`} state={{ from: location.pathname }} className="block flex-1">
                       <h3 className="font-bold text-lg mb-2 line-clamp-1">{note.title || 'Untitled'}</h3>
                       <p className="text-slate-500 text-sm line-clamp-4 leading-relaxed">
                         {note.content?.replace(/<[^>]+>/g, ' ').trim() || 'No content yet.'}

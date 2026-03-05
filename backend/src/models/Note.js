@@ -6,6 +6,7 @@ const noteSchema = new mongoose.Schema(
     content: { type: String, default: '' },
     owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     collaborators: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+    isFavorite: { type: Boolean, default: false, index: true },
     isTrashed: { type: Boolean, default: false, index: true },
     trashedAt: { type: Date, default: null },
   },
