@@ -4,14 +4,11 @@ import User from '../models/User.js';
 import { protect } from '../middleware/auth.js';
 
 const router = express.Router();
-const JWT_SECRET = process.env.JWT_SECRET;
-
-if (!JWT_SECRET) {
-  throw new Error('JWT_SECRET is not set in server environment');
-}
 
 const generateToken = (id) => {
-  return jwt.sign({ id }, JWT_SECRET, { expiresIn: '7d' });
+  const secret = process.env.JWT_SECRET;
+  if (!secret) throw new Error('JWT_SECRET is not set in server environment');
+  return jwt.sign({ id }, secret, { expiresIn: '7d' });
 };
 
 router.post('/register', async (req, res) => {

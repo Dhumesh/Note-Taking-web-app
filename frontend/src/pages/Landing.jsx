@@ -37,9 +37,6 @@ export default function Landing() {
             <span>NoteSync</span>
           </Link>
           <nav className="hidden md:flex items-center gap-6 text-sm text-slate-600">
-            <a href="#features" className="hover:text-slate-900">Features</a>
-            <a href="#pricing" className="hover:text-slate-900">Pricing</a>
-            <a href="#about" className="hover:text-slate-900">About</a>
           </nav>
           <div className="flex items-center gap-2">
             <Link to={user ? '/app' : '/login'} className="text-sm px-3 py-2 text-slate-700 hover:text-slate-900">
