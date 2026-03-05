@@ -13,6 +13,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [deletingId, setDeletingId] = useState('');
+  const [actionError, setActionError] = useState('');
 
   useEffect(() => {
     api
@@ -40,11 +41,19 @@ export default function Dashboard() {
 
   async function createNote() {
     setCreating(true);
+    setActionError('');
     try {
       const note = await api.post('/api/notes', { title: 'Untitled', content: '' });
-      navigate(`/note/${note._id}`);
+      const noteId = note?._id || note?.id;
+      if (!noteId) {
+        await api.get('/api/notes').then(setNotes).catch(() => {});
+        setActionError('Note created but could not open automatically. Please open it from the list.');
+        return;
+      }
+      navigate(`/note/${noteId}`);
     } catch (err) {
       console.error(err);
+      setActionError(err.message || 'Failed to create note');
     } finally {
       setCreating(false);
     }
@@ -146,6 +155,11 @@ export default function Dashboard() {
               <h2 className="text-3xl font-bold">All Notes</h2>
               <p className="text-slate-500 mt-1">Manage and organize your thoughts effectively.</p>
             </div>
+            {actionError && (
+              <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                {actionError}
+              </div>
+            )}
 
             {loading ? (
               <div className="flex justify-center py-12">

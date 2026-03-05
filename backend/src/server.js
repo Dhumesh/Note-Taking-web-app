@@ -7,7 +7,7 @@ dotenv.config({ path: path.join(__dirname, '../.env') });
 
 import express from 'express';
 import cors from 'cors';
-import { connectDB, isDBConnected } from './config/db.js';
+import { connectDB, getLastDBError, isDBConnected } from './config/db.js';
 import authRoutes from './routes/auth.js';
 import notesRoutes from './routes/notes.js';
 
@@ -17,18 +17,34 @@ app.use(express.json({ limit: '20mb' }));
 
 // Return 503 when DB is down so frontend gets a clear error instead of ECONNREFUSED
 app.use('/api/auth', (req, res, next) => {
-  if (!isDBConnected()) return res.status(503).json({ message: 'Database unavailable. Start MongoDB or set MONGODB_URI in backend/.env' });
+  if (!isDBConnected()) {
+    return res.status(503).json({
+      message: 'Database unavailable. Start MongoDB or set MONGODB_URI in backend/.env',
+      reason: getLastDBError(),
+    });
+  }
   next();
 });
 app.use('/api/notes', (req, res, next) => {
-  if (!isDBConnected()) return res.status(503).json({ message: 'Database unavailable. Start MongoDB or set MONGODB_URI in backend/.env' });
+  if (!isDBConnected()) {
+    return res.status(503).json({
+      message: 'Database unavailable. Start MongoDB or set MONGODB_URI in backend/.env',
+      reason: getLastDBError(),
+    });
+  }
   next();
 });
 
 app.use('/api/auth', authRoutes);
 app.use('/api/notes', notesRoutes);
 
-app.get('/api/health', (_, res) => res.json({ ok: true, db: isDBConnected() }));
+app.get('/api/health', (_, res) =>
+  res.json({
+    ok: true,
+    db: isDBConnected(),
+    dbError: isDBConnected() ? null : getLastDBError(),
+  })
+);
 
 // Global error handler so uncaught errors return 500 instead of crashing
 app.use((err, req, res, next) => {

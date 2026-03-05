@@ -17,6 +17,7 @@ export default function NotePage() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [collabEmail, setCollabEmail] = useState('');
+  const [collabPermission, setCollabPermission] = useState('edit');
   const [collabError, setCollabError] = useState('');
   const [collabLoading, setCollabLoading] = useState(false);
   const [imageError, setImageError] = useState('');
@@ -26,6 +27,13 @@ export default function NotePage() {
   const MAX_IMAGE_SIZE_BYTES = 2 * 1024 * 1024;
 
   const isOwner = note?.owner?._id === user?._id;
+  const collaboratorEntries = (note?.collaborators || []).map((c) => ({
+    user: c?.user || c,
+    permission: c?.permission || 'edit',
+  }));
+  const myCollab = collaboratorEntries.find((c) => c.user?._id === user?._id);
+  const canEdit = isOwner || (note?.currentUserPermission || myCollab?.permission || 'edit') === 'edit';
+
   const backPath = location.state?.from || '/app';
   const backLabel = backPath === '/favorites' ? 'Back to Favorites' : 'Back to Notes';
   const goBack = () => {
@@ -38,7 +46,7 @@ export default function NotePage() {
     try {
       const data = await api.get(`/api/notes/${id}`);
       setNote(data);
-      setTitle(data.title);
+      setTitle(data.title || '');
       setContent(data.content || '');
     } catch (err) {
       if (err.message?.includes('404')) navigate('/app');
@@ -53,7 +61,7 @@ export default function NotePage() {
   }, [fetchNote]);
 
   useEffect(() => {
-    if (!note || !hasUserEdited.current) return;
+    if (!note || !hasUserEdited.current || !canEdit) return;
     const t = setTimeout(() => {
       setSaving(true);
       api
@@ -69,20 +77,33 @@ export default function NotePage() {
         .finally(() => setSaving(false));
     }, 700);
     return () => clearTimeout(t);
-  }, [id, title, content]);
+  }, [id, title, content, note, canEdit]);
 
   async function addCollaborator(e) {
     e.preventDefault();
     setCollabError('');
     setCollabLoading(true);
     try {
-      await api.post(`/api/notes/${id}/collaborators`, { email: collabEmail.trim() });
+      await api.post(`/api/notes/${id}/collaborators`, {
+        email: collabEmail.trim(),
+        permission: collabPermission,
+      });
       setCollabEmail('');
+      setCollabPermission('edit');
       fetchNote();
     } catch (err) {
       setCollabError(err.message || 'Failed to add');
     } finally {
       setCollabLoading(false);
+    }
+  }
+
+  async function updateCollaboratorPermission(userId, permission) {
+    try {
+      await api.put(`/api/notes/${id}/collaborators/${userId}/permission`, { permission });
+      fetchNote();
+    } catch (err) {
+      console.error(err);
     }
   }
 
@@ -109,10 +130,14 @@ export default function NotePage() {
     imageInputRef.current?.click();
   }, []);
 
-  const handleEditorChange = useCallback((v) => {
-    hasUserEdited.current = true;
-    setContent(v);
-  }, []);
+  const handleEditorChange = useCallback(
+    (v) => {
+      if (!canEdit) return;
+      hasUserEdited.current = true;
+      setContent(v);
+    },
+    [canEdit]
+  );
 
   function handleImageSelect(e) {
     const file = e.target.files?.[0];
@@ -158,24 +183,21 @@ export default function NotePage() {
 
   const quillModules = useMemo(
     () => ({
-      toolbar: [
-        [{ header: [1, 2, 3, false] }],
-        ['bold', 'italic', 'underline', 'strike'],
-        [{ list: 'ordered' }, { list: 'bullet' }],
-        ['link', 'image', 'blockquote', 'code-block'],
-        ['clean'],
-      ],
+      toolbar: {
+        container: [
+          [{ header: [1, 2, 3, false] }],
+          ['bold', 'italic', 'underline', 'strike'],
+          [{ list: 'ordered' }, { list: 'bullet' }],
+          ['link', 'image', 'blockquote', 'code-block'],
+          ['clean'],
+        ],
+        handlers: {
+          image: openImagePicker,
+        },
+      },
     }),
-    []
+    [openImagePicker]
   );
-
-  useEffect(() => {
-    const quill = quillRef.current?.getEditor?.();
-    if (!quill) return;
-    const toolbar = quill.getModule('toolbar');
-    if (!toolbar) return;
-    toolbar.addHandler('image', openImagePicker);
-  }, [id, openImagePicker]);
 
   if (loading) {
     return (
@@ -197,16 +219,13 @@ export default function NotePage() {
     <div className="min-h-screen bg-[#f6f6f8] text-slate-900 flex flex-col">
       <header className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-3 sticky top-0 z-30">
         <div className="flex items-center gap-4 min-w-0">
-          <button
-            type="button"
-            onClick={goBack}
-            className="text-[#135bec] text-sm font-semibold hover:underline"
-          >
+          <button type="button" onClick={goBack} className="text-[#135bec] text-sm font-semibold hover:underline">
             {backLabel}
           </button>
           <div className="min-w-0">
             <p className="text-xs text-slate-500">Collaborative note</p>
             <p className="text-sm font-semibold truncate">{note.owner?.name || 'Owner'}</p>
+            {!canEdit && <p className="text-xs text-amber-600 mt-1">View only access</p>}
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -217,10 +236,7 @@ export default function NotePage() {
           >
             {note.isFavorite ? 'Unfavorite' : 'Favorite'}
           </button>
-          <button
-            onClick={logout}
-            className="px-3 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-100"
-          >
+          <button onClick={logout} className="px-3 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-100">
             Logout
           </button>
           {isOwner && (
@@ -238,29 +254,25 @@ export default function NotePage() {
             <input
               type="text"
               value={title}
+              disabled={!canEdit}
               onChange={(e) => {
+                if (!canEdit) return;
                 hasUserEdited.current = true;
                 setTitle(e.target.value);
               }}
               placeholder="Untitled note"
-              className="w-full text-4xl font-extrabold tracking-tight bg-transparent border-0 focus:ring-0 outline-none placeholder:text-slate-300"
+              className="w-full text-4xl font-extrabold tracking-tight bg-transparent border-0 focus:ring-0 outline-none placeholder:text-slate-300 disabled:opacity-70"
             />
             <p className="text-xs text-slate-400 mt-2">Last updated {new Date(note.updatedAt).toLocaleString()}</p>
           </div>
 
           <div className="mt-4 border-t border-slate-200">
-            <input
-              ref={imageInputRef}
-              type="file"
-              accept="image/*"
-              onChange={handleImageSelect}
-              className="hidden"
-            />
+            <input ref={imageInputRef} type="file" accept="image/*" onChange={handleImageSelect} className="hidden" />
             <ReactQuill
               key={id}
               ref={quillRef}
               theme="snow"
-              readOnly={false}
+              readOnly={!canEdit}
               value={content}
               onChange={handleEditorChange}
               modules={quillModules}
@@ -275,18 +287,30 @@ export default function NotePage() {
               <span className="inline-flex items-center gap-1 px-2 py-1 bg-slate-200 text-slate-700 rounded text-sm">
                 {note.owner?.name} (owner)
               </span>
-              {note.collaborators?.map((c) => (
-                <span key={c._id} className="inline-flex items-center gap-2 px-2 py-1 bg-blue-100 text-blue-800 rounded text-sm">
-                  {c.name}
-                  {isOwner && (
-                    <button
-                      type="button"
-                      onClick={() => removeCollaborator(c._id)}
-                      className="text-blue-700 hover:text-red-600"
-                      aria-label={`Remove ${c.name}`}
-                    >
-                      ×
-                    </button>
+              {collaboratorEntries.map(({ user: collaborator, permission }) => (
+                <span key={collaborator?._id} className="inline-flex items-center gap-2 px-2 py-1 bg-blue-100 text-blue-800 rounded text-sm">
+                  {collaborator?.name}
+                  {isOwner ? (
+                    <>
+                      <select
+                        value={permission}
+                        onChange={(e) => updateCollaboratorPermission(collaborator._id, e.target.value)}
+                        className="text-xs border border-blue-200 rounded px-1 py-0.5 bg-white text-slate-700"
+                      >
+                        <option value="view">Can view</option>
+                        <option value="edit">Can edit</option>
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => removeCollaborator(collaborator._id)}
+                        className="text-blue-700 hover:text-red-600"
+                        aria-label={`Remove ${collaborator?.name}`}
+                      >
+                        x
+                      </button>
+                    </>
+                  ) : (
+                    <span className="text-xs text-slate-700">{permission === 'view' ? 'Can view' : 'Can edit'}</span>
                   )}
                 </span>
               ))}
@@ -303,6 +327,14 @@ export default function NotePage() {
                   placeholder="Add collaborator by email"
                   className="flex-1 min-w-[220px] px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-[#135bec] focus:border-[#135bec] outline-none"
                 />
+                <select
+                  value={collabPermission}
+                  onChange={(e) => setCollabPermission(e.target.value)}
+                  className="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white"
+                >
+                  <option value="edit">Can edit</option>
+                  <option value="view">Can view</option>
+                </select>
                 <button
                   type="submit"
                   disabled={collabLoading || !collabEmail.trim()}

@@ -12,16 +12,40 @@ function validateNoteSize(content) {
   return bytes <= MAX_NOTE_CONTENT_BYTES;
 }
 
+function accessFilter(userId) {
+  return {
+    $or: [{ owner: userId }, { 'collaborators.user': userId }, { collaborators: userId }],
+  };
+}
+
+function getPermission(note, userId) {
+  if (note.owner?.toString() === userId.toString()) return 'edit';
+  for (const c of note.collaborators || []) {
+    if (c?.user && c.user.toString() === userId.toString()) return c.permission || 'edit';
+    if (c?.toString && c.toString() === userId.toString()) return 'edit'; // legacy docs
+  }
+  return null;
+}
+
+function canEdit(note, userId) {
+  return getPermission(note, userId) === 'edit';
+}
+
+function withPermission(note, userId) {
+  const obj = note.toObject ? note.toObject() : note;
+  return { ...obj, currentUserPermission: getPermission(note, userId) };
+}
+
 // Get all notes (owned + shared)
 router.get('/', async (req, res) => {
   try {
     const notes = await Note.find({
-      $or: [{ owner: req.user._id }, { collaborators: req.user._id }],
+      ...accessFilter(req.user._id),
       isTrashed: { $ne: true },
     })
       .sort({ updatedAt: -1 })
       .populate('owner', 'name email')
-      .populate('collaborators', 'name email')
+      .populate('collaborators.user', 'name email')
       .lean();
     res.json(notes);
   } catch (err) {
@@ -35,7 +59,7 @@ router.get('/search', async (req, res) => {
     const q = (req.query.q || '').trim();
     if (!q) return res.json([]);
     const baseFilter = {
-      $or: [{ owner: req.user._id }, { collaborators: req.user._id }],
+      ...accessFilter(req.user._id),
       isTrashed: { $ne: true },
     };
     let notes;
@@ -46,7 +70,7 @@ router.get('/search', async (req, res) => {
       )
         .sort({ score: { $meta: 'textScore' } })
         .populate('owner', 'name email')
-        .populate('collaborators', 'name email')
+        .populate('collaborators.user', 'name email')
         .lean();
     } catch (textErr) {
       // Text index may not exist yet; fall back to regex search
@@ -57,7 +81,7 @@ router.get('/search', async (req, res) => {
       })
         .sort({ updatedAt: -1 })
         .populate('owner', 'name email')
-        .populate('collaborators', 'name email')
+        .populate('collaborators.user', 'name email')
         .lean();
     }
     res.json(notes);
@@ -70,12 +94,12 @@ router.get('/search', async (req, res) => {
 router.get('/trash', async (req, res) => {
   try {
     const notes = await Note.find({
-      $or: [{ owner: req.user._id }, { collaborators: req.user._id }],
+      ...accessFilter(req.user._id),
       isTrashed: true,
     })
       .sort({ trashedAt: -1, updatedAt: -1 })
       .populate('owner', 'name email')
-      .populate('collaborators', 'name email')
+      .populate('collaborators.user', 'name email')
       .lean();
     res.json(notes);
   } catch (err) {
@@ -87,13 +111,13 @@ router.get('/trash', async (req, res) => {
 router.get('/favorites', async (req, res) => {
   try {
     const notes = await Note.find({
-      $or: [{ owner: req.user._id }, { collaborators: req.user._id }],
+      ...accessFilter(req.user._id),
       isTrashed: { $ne: true },
       isFavorite: true,
     })
       .sort({ updatedAt: -1 })
       .populate('owner', 'name email')
-      .populate('collaborators', 'name email')
+      .populate('collaborators.user', 'name email')
       .lean();
     res.json(notes);
   } catch (err) {
@@ -110,13 +134,13 @@ router.get('/:id', async (req, res) => {
   try {
     const note = await Note.findOne({
       _id: req.params.id,
-      $or: [{ owner: req.user._id }, { collaborators: req.user._id }],
+      ...accessFilter(req.user._id),
       isTrashed: { $ne: true },
     })
       .populate('owner', 'name email')
-      .populate('collaborators', 'name email');
+      .populate('collaborators.user', 'name email');
     if (!note) return res.status(404).json({ message: 'Note not found' });
-    res.json(note);
+    res.json(withPermission(note, req.user._id));
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -134,8 +158,11 @@ router.post('/', async (req, res) => {
       content: nextContent,
       owner: req.user._id,
     });
-    await note.populate(['owner', 'collaborators']);
-    res.status(201).json(note);
+    await note.populate([
+      { path: 'owner', select: 'name email' },
+      { path: 'collaborators.user', select: 'name email' },
+    ]);
+    res.status(201).json(withPermission(note, req.user._id));
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -146,10 +173,13 @@ router.put('/:id', async (req, res) => {
   try {
     const note = await Note.findOne({
       _id: req.params.id,
-      $or: [{ owner: req.user._id }, { collaborators: req.user._id }],
+      ...accessFilter(req.user._id),
       isTrashed: { $ne: true },
     });
     if (!note) return res.status(404).json({ message: 'Note not found' });
+    if (!canEdit(note, req.user._id)) {
+      return res.status(403).json({ message: 'You have view-only access to this note.' });
+    }
     if (req.body.title !== undefined) note.title = req.body.title;
     if (req.body.content !== undefined) {
       if (!validateNoteSize(req.body.content)) {
@@ -158,8 +188,11 @@ router.put('/:id', async (req, res) => {
       note.content = req.body.content;
     }
     await note.save();
-    await note.populate(['owner', 'collaborators']);
-    res.json(note);
+    await note.populate([
+      { path: 'owner', select: 'name email' },
+      { path: 'collaborators.user', select: 'name email' },
+    ]);
+    res.json(withPermission(note, req.user._id));
   } catch (err) {
     if (err?.code === 10334 || /BSONObj size/i.test(err?.message || '')) {
       return res.status(413).json({ message: 'Note exceeded storage limit. Reduce image size/quantity.' });
@@ -173,14 +206,17 @@ router.put('/:id/favorite', async (req, res) => {
   try {
     const note = await Note.findOne({
       _id: req.params.id,
-      $or: [{ owner: req.user._id }, { collaborators: req.user._id }],
+      ...accessFilter(req.user._id),
       isTrashed: { $ne: true },
     });
     if (!note) return res.status(404).json({ message: 'Note not found' });
     if (req.body?.isFavorite !== undefined) note.isFavorite = !!req.body.isFavorite;
     else note.isFavorite = !note.isFavorite;
     await note.save();
-    await note.populate(['owner', 'collaborators']);
+    await note.populate([
+      { path: 'owner', select: 'name email' },
+      { path: 'collaborators.user', select: 'name email' },
+    ]);
     res.json(note);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -192,10 +228,13 @@ router.delete('/:id', async (req, res) => {
   try {
     const note = await Note.findOne({
       _id: req.params.id,
-      $or: [{ owner: req.user._id }, { collaborators: req.user._id }],
+      ...accessFilter(req.user._id),
       isTrashed: { $ne: true },
     });
     if (!note) return res.status(404).json({ message: 'Note not found' });
+    if (!canEdit(note, req.user._id)) {
+      return res.status(403).json({ message: 'You have view-only access to this note.' });
+    }
     note.isTrashed = true;
     note.trashedAt = new Date();
     await note.save();
@@ -210,15 +249,21 @@ router.post('/:id/restore', async (req, res) => {
   try {
     const note = await Note.findOne({
       _id: req.params.id,
-      $or: [{ owner: req.user._id }, { collaborators: req.user._id }],
+      ...accessFilter(req.user._id),
       isTrashed: true,
     });
     if (!note) return res.status(404).json({ message: 'Note not found in trash' });
+    if (!canEdit(note, req.user._id)) {
+      return res.status(403).json({ message: 'You have view-only access to this note.' });
+    }
     note.isTrashed = false;
     note.trashedAt = null;
     await note.save();
-    await note.populate(['owner', 'collaborators']);
-    res.json(note);
+    await note.populate([
+      { path: 'owner', select: 'name email' },
+      { path: 'collaborators.user', select: 'name email' },
+    ]);
+    res.json(withPermission(note, req.user._id));
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -241,16 +286,51 @@ router.post('/:id/collaborators', async (req, res) => {
   try {
     const note = await Note.findOne({ _id: req.params.id, owner: req.user._id });
     if (!note) return res.status(404).json({ message: 'Note not found' });
+    const permission = req.body?.permission === 'view' ? 'view' : 'edit';
     const user = await User.findOne({ email: (req.body.email || '').toLowerCase() });
     if (!user) return res.status(404).json({ message: 'User not found' });
     if (user._id.equals(req.user._id))
       return res.status(400).json({ message: 'Cannot add yourself' });
-    if (note.collaborators.some((c) => c.equals(user._id)))
+    if (
+      note.collaborators.some(
+        (c) =>
+          (c?.user && c.user.toString() === user._id.toString()) ||
+          (c?.toString && c.toString() === user._id.toString())
+      )
+    )
       return res.status(400).json({ message: 'Already a collaborator' });
-    note.collaborators.push(user._id);
+    note.collaborators.push({ user: user._id, permission });
     await note.save();
-    await note.populate('owner', 'name email').populate('collaborators', 'name email');
-    res.json(note);
+    await note.populate([
+      { path: 'owner', select: 'name email' },
+      { path: 'collaborators.user', select: 'name email' },
+    ]);
+    res.json(withPermission(note, req.user._id));
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Update collaborator permission (owner only)
+router.put('/:id/collaborators/:userId/permission', async (req, res) => {
+  try {
+    const note = await Note.findOne({ _id: req.params.id, owner: req.user._id });
+    if (!note) return res.status(404).json({ message: 'Note not found' });
+    const permission = req.body?.permission;
+    if (!['view', 'edit'].includes(permission)) {
+      return res.status(400).json({ message: 'Permission must be view or edit' });
+    }
+    const collab = note.collaborators.find(
+      (c) => c?.user && c.user.toString() === req.params.userId
+    );
+    if (!collab) return res.status(404).json({ message: 'Collaborator not found' });
+    collab.permission = permission;
+    await note.save();
+    await note.populate([
+      { path: 'owner', select: 'name email' },
+      { path: 'collaborators.user', select: 'name email' },
+    ]);
+    res.json(withPermission(note, req.user._id));
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -262,11 +342,18 @@ router.delete('/:id/collaborators/:userId', async (req, res) => {
     const note = await Note.findOne({ _id: req.params.id, owner: req.user._id });
     if (!note) return res.status(404).json({ message: 'Note not found' });
     note.collaborators = note.collaborators.filter(
-      (id) => id.toString() !== req.params.userId
+      (c) =>
+        !(
+          (c?.user && c.user.toString() === req.params.userId) ||
+          (c?.toString && c.toString() === req.params.userId)
+        )
     );
     await note.save();
-    await note.populate('owner', 'name email').populate('collaborators', 'name email');
-    res.json(note);
+    await note.populate([
+      { path: 'owner', select: 'name email' },
+      { path: 'collaborators.user', select: 'name email' },
+    ]);
+    res.json(withPermission(note, req.user._id));
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
