@@ -19,6 +19,9 @@ body {
 }
 .ql-editor {
   @apply min-h-[200px];
+  pointer-events: auto;
+  user-select: text;
+  cursor: text;
 }
 .ql-editor.ql-blank::before {
   @apply text-slate-400 italic;

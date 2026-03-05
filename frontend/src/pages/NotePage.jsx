@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams, useNavigate, Link, useLocation } from 'react-router-dom';
 import ReactQuill from 'react-quill';
 import 'react-quill/dist/quill.snow.css';
@@ -15,10 +15,15 @@ export default function NotePage() {
   const [content, setContent] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const [collabEmail, setCollabEmail] = useState('');
   const [collabError, setCollabError] = useState('');
   const [collabLoading, setCollabLoading] = useState(false);
+  const [imageError, setImageError] = useState('');
   const hasUserEdited = useRef(false);
+  const imageInputRef = useRef(null);
+  const quillRef = useRef(null);
+  const MAX_IMAGE_SIZE_BYTES = 2 * 1024 * 1024;
 
   const isOwner = note?.owner?._id === user?._id;
   const backPath = location.state?.from || '/app';
@@ -53,12 +58,18 @@ export default function NotePage() {
       setSaving(true);
       api
         .put(`/api/notes/${id}`, { title, content })
-        .then((updated) => setNote(updated))
-        .catch(console.error)
+        .then((updated) => {
+          setNote(updated);
+          setSaveError('');
+        })
+        .catch((err) => {
+          console.error(err);
+          setSaveError(err.message || 'Failed to save note');
+        })
         .finally(() => setSaving(false));
     }, 700);
     return () => clearTimeout(t);
-  }, [id, title, content, note]);
+  }, [id, title, content]);
 
   async function addCollaborator(e) {
     e.preventDefault();
@@ -94,6 +105,48 @@ export default function NotePage() {
     }
   }
 
+  const openImagePicker = useCallback(() => {
+    imageInputRef.current?.click();
+  }, []);
+
+  const handleEditorChange = useCallback((v) => {
+    hasUserEdited.current = true;
+    setContent(v);
+  }, []);
+
+  function handleImageSelect(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setImageError('Please select a valid image file.');
+      e.target.value = '';
+      return;
+    }
+    if (file.size > MAX_IMAGE_SIZE_BYTES) {
+      setImageError('Image is too large. Please use an image under 2MB.');
+      e.target.value = '';
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const quill = quillRef.current?.getEditor();
+      if (!quill) return;
+      const range = quill.getSelection(true);
+      const index = range ? range.index : quill.getLength();
+      quill.insertEmbed(index, 'image', reader.result, 'user');
+      quill.setSelection(index + 1, 0, 'user');
+      hasUserEdited.current = true;
+      setContent(quill.root.innerHTML);
+      setImageError('');
+      e.target.value = '';
+    };
+    reader.onerror = () => {
+      setImageError('Failed to read image. Please try another file.');
+      e.target.value = '';
+    };
+    reader.readAsDataURL(file);
+  }
+
   async function toggleFavorite() {
     try {
       const updated = await api.put(`/api/notes/${id}/favorite`, { isFavorite: !note.isFavorite });
@@ -102,6 +155,27 @@ export default function NotePage() {
       console.error(err);
     }
   }
+
+  const quillModules = useMemo(
+    () => ({
+      toolbar: [
+        [{ header: [1, 2, 3, false] }],
+        ['bold', 'italic', 'underline', 'strike'],
+        [{ list: 'ordered' }, { list: 'bullet' }],
+        ['link', 'image', 'blockquote', 'code-block'],
+        ['clean'],
+      ],
+    }),
+    []
+  );
+
+  useEffect(() => {
+    const quill = quillRef.current?.getEditor?.();
+    if (!quill) return;
+    const toolbar = quill.getModule('toolbar');
+    if (!toolbar) return;
+    toolbar.addHandler('image', openImagePicker);
+  }, [id, openImagePicker]);
 
   if (loading) {
     return (
@@ -118,16 +192,6 @@ export default function NotePage() {
       </div>
     );
   }
-
-  const quillModules = {
-    toolbar: [
-      [{ header: [1, 2, 3, false] }],
-      ['bold', 'italic', 'underline', 'strike'],
-      [{ list: 'ordered' }, { list: 'bullet' }],
-      ['link', 'blockquote', 'code-block'],
-      ['clean'],
-    ],
-  };
 
   return (
     <div className="min-h-screen bg-[#f6f6f8] text-slate-900 flex flex-col">
@@ -169,6 +233,7 @@ export default function NotePage() {
 
       <main className="flex-1 overflow-y-auto p-6 lg:px-16">
         <div className="max-w-5xl mx-auto bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+          {saveError && <p className="px-6 py-3 text-sm text-red-600 bg-red-50 border-b border-red-100">{saveError}</p>}
           <div className="px-6 pt-6">
             <input
               type="text"
@@ -184,16 +249,24 @@ export default function NotePage() {
           </div>
 
           <div className="mt-4 border-t border-slate-200">
+            <input
+              ref={imageInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleImageSelect}
+              className="hidden"
+            />
             <ReactQuill
+              key={id}
+              ref={quillRef}
               theme="snow"
+              readOnly={false}
               value={content}
-              onChange={(v) => {
-                hasUserEdited.current = true;
-                setContent(v);
-              }}
+              onChange={handleEditorChange}
               modules={quillModules}
               className="min-h-[320px]"
             />
+            {imageError && <p className="px-6 py-3 text-sm text-red-600 bg-red-50">{imageError}</p>}
           </div>
 
           <section className="border-t border-slate-200 p-6 bg-slate-50">

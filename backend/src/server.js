@@ -13,7 +13,7 @@ import notesRoutes from './routes/notes.js';
 
 const app = express();
 app.use(cors({ origin: true, credentials: true }));
-app.use(express.json({ limit: '5mb' }));
+app.use(express.json({ limit: '20mb' }));
 
 // Return 503 when DB is down so frontend gets a clear error instead of ECONNREFUSED
 app.use('/api/auth', (req, res, next) => {

@@ -5,6 +5,12 @@ import { protect } from '../middleware/auth.js';
 
 const router = express.Router();
 router.use(protect);
+const MAX_NOTE_CONTENT_BYTES = 12 * 1024 * 1024;
+
+function validateNoteSize(content) {
+  const bytes = Buffer.byteLength(content || '', 'utf8');
+  return bytes <= MAX_NOTE_CONTENT_BYTES;
+}
 
 // Get all notes (owned + shared)
 router.get('/', async (req, res) => {
@@ -119,9 +125,13 @@ router.get('/:id', async (req, res) => {
 // Create note
 router.post('/', async (req, res) => {
   try {
+    const nextContent = req.body.content || '';
+    if (!validateNoteSize(nextContent)) {
+      return res.status(413).json({ message: 'Note is too large. Reduce image size/quantity and try again.' });
+    }
     const note = await Note.create({
       title: req.body.title || 'Untitled',
-      content: req.body.content || '',
+      content: nextContent,
       owner: req.user._id,
     });
     await note.populate(['owner', 'collaborators']);
@@ -141,11 +151,19 @@ router.put('/:id', async (req, res) => {
     });
     if (!note) return res.status(404).json({ message: 'Note not found' });
     if (req.body.title !== undefined) note.title = req.body.title;
-    if (req.body.content !== undefined) note.content = req.body.content;
+    if (req.body.content !== undefined) {
+      if (!validateNoteSize(req.body.content)) {
+        return res.status(413).json({ message: 'Note is too large. Reduce image size/quantity and try again.' });
+      }
+      note.content = req.body.content;
+    }
     await note.save();
     await note.populate(['owner', 'collaborators']);
     res.json(note);
   } catch (err) {
+    if (err?.code === 10334 || /BSONObj size/i.test(err?.message || '')) {
+      return res.status(413).json({ message: 'Note exceeded storage limit. Reduce image size/quantity.' });
+    }
     res.status(500).json({ message: err.message });
   }
 });
